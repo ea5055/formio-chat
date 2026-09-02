@@ -354,20 +354,10 @@
         }
         
         collectFormData() {
-            const formData = {};
-            const form = document.querySelector('form');
-            
-            if (form) {
-                const formInputs = form.querySelectorAll('[name]');
-                formInputs.forEach(input => {
-                    const key = input.name || input.getAttribute('data-key');
-                    if (key) {
-                        formData[key] = input.value || '';
-                    }
-                });
+            if (window.formInstance) {
+                return window.formInstance.submission.data;
             }
-            
-            return formData;
+            return {};
         }
         
         showPendingChanges(updates) {
@@ -384,14 +374,14 @@
         }
         
         applyPendingChanges() {
-            Object.entries(this.pendingUpdates).forEach(([key, value]) => {
-                const input = document.querySelector(`[name="${key}"], [data-key="${key}"]`);
-                if (input) {
-                    input.value = value;
-                    // Trigger change event
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            });
+            if (window.formInstance) {
+                Object.entries(this.pendingUpdates).forEach(([key, value]) => {
+                    const component = window.formInstance.getComponent(key);
+                    if (component) {
+                        component.setValue(value);
+                    }
+                });
+            }
             
             this.displayMessage('✓ Form updated with suggested changes.', 'assistant');
             this.pendingChanges.classList.add('d-none');
