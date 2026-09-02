@@ -1,0 +1,428 @@
+<!-- AI Chat Assistant Sidebar -->
+<div id="aiChatContainer" class="ai-chat-container">
+    <div class="ai-chat-header">
+        <h3>Form Assistant</h3>
+        <button id="aiChatToggle" class="ai-chat-toggle" title="Toggle chat">−</button>
+    </div>
+    
+    <div class="ai-chat-messages" id="aiChatMessages"></div>
+    
+    <div class="ai-chat-input-area">
+        <input 
+            type="text" 
+            id="aiUserInput" 
+            class="ai-chat-input" 
+            placeholder="Ask me to fill form fields..." 
+            autocomplete="off"
+        />
+        <button id="aiChatSend" class="ai-chat-send-btn" title="Send message">
+            <span>Send</span>
+        </button>
+    </div>
+    
+    <div id="aiPendingChanges" class="ai-pending-changes d-none">
+        <h5>Proposed Changes</h5>
+        <ul id="changesList"></ul>
+        <div class="ai-change-actions">
+            <button id="aiApplyChanges" class="btn btn-sm btn-success">Apply</button>
+            <button id="aiRejectChanges" class="btn btn-sm btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .ai-chat-container {
+        position: fixed;
+        right: 0;
+        top: 80px;
+        width: 350px;
+        height: calc(100vh - 80px);
+        background: white;
+        border-left: 1px solid #ddd;
+        display: flex;
+        flex-direction: column;
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        transition: transform 0.3s ease;
+    }
+    
+    .ai-chat-container.collapsed {
+        transform: translateX(100%);
+        width: 50px;
+    }
+    
+    .ai-chat-container.collapsed .ai-chat-header {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+    }
+    
+    .ai-chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #ddd;
+        flex-shrink: 0;
+    }
+    
+    .ai-chat-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+    
+    .ai-chat-toggle {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        font-size: 20px;
+        padding: 0;
+        line-height: 1;
+    }
+    
+    .ai-chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .ai-message {
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.4;
+        max-width: 100%;
+        word-wrap: break-word;
+    }
+    
+    .ai-message.user {
+        background: #e3f2fd;
+        color: #1565c0;
+        align-self: flex-end;
+        text-align: right;
+        max-width: 85%;
+    }
+    
+    .ai-message.assistant {
+        background: #f5f5f5;
+        color: #333;
+        align-self: flex-start;
+        max-width: 85%;
+    }
+    
+    .ai-message.error {
+        background: #ffebee;
+        color: #c62828;
+        align-self: flex-start;
+    }
+    
+    .ai-chat-input-area {
+        display: flex;
+        gap: 8px;
+        padding: 12px;
+        border-top: 1px solid #ddd;
+        flex-shrink: 0;
+    }
+    
+    .ai-chat-input {
+        flex: 1;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 14px;
+        font-family: inherit;
+    }
+    
+    .ai-chat-input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+    }
+    
+    .ai-chat-send-btn {
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+    
+    .ai-chat-send-btn:hover {
+        background: #5568d3;
+    }
+    
+    .ai-chat-send-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    
+    .ai-pending-changes {
+        background: #fffacd;
+        border-top: 1px solid #ffd700;
+        padding: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    
+    .ai-pending-changes h5 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #333;
+    }
+    
+    .ai-pending-changes ul {
+        margin: 0 0 10px 0;
+        padding-left: 20px;
+        font-size: 13px;
+    }
+    
+    .ai-pending-changes li {
+        margin-bottom: 5px;
+        color: #555;
+    }
+    
+    .ai-change-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+    
+    .ai-chat-container.collapsed {
+        width: 50px;
+    }
+    
+    .ai-chat-container.collapsed .ai-chat-messages,
+    .ai-chat-container.collapsed .ai-chat-input-area,
+    .ai-chat-container.collapsed .ai-pending-changes {
+        display: none;
+    }
+    
+    /* Adjust form container when chat is open */
+    body.ai-chat-open .container {
+        margin-right: 350px;
+    }
+</style>
+
+<script>
+    class FormAIAssistant {
+        constructor() {
+            this.chatMessages = document.getElementById('aiChatMessages');
+            this.userInput = document.getElementById('aiUserInput');
+            this.sendBtn = document.getElementById('aiChatSend');
+            this.toggleBtn = document.getElementById('aiChatToggle');
+            this.container = document.getElementById('aiChatContainer');
+            this.pendingChanges = document.getElementById('aiPendingChanges');
+            this.changesList = document.getElementById('changesList');
+            this.applyBtn = document.getElementById('aiApplyChanges');
+            this.rejectBtn = document.getElementById('aiRejectChanges');
+            
+            this.chatHistory = this.loadChatHistory();
+            this.pendingUpdates = {};
+            this.isWaitingForResponse = false;
+            
+            this.setupEventListeners();
+            this.displayChatHistory();
+        }
+        
+        setupEventListeners() {
+            this.sendBtn.addEventListener('click', () => this.sendMessage());
+            this.userInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendMessage();
+                }
+            });
+            
+            this.toggleBtn.addEventListener('click', () => {
+                this.container.classList.toggle('collapsed');
+            });
+            
+            this.applyBtn.addEventListener('click', () => this.applyPendingChanges());
+            this.rejectBtn.addEventListener('click', () => this.rejectPendingChanges());
+        }
+        
+        loadChatHistory() {
+            try {
+                const saved = localStorage.getItem('aiChatHistory');
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        
+        saveChatHistory() {
+            try {
+                localStorage.setItem('aiChatHistory', JSON.stringify(this.chatHistory));
+            } catch (e) {
+                console.error('Failed to save chat history:', e);
+            }
+        }
+        
+        displayChatHistory() {
+            this.chatMessages.innerHTML = '';
+            this.chatHistory.forEach(msg => {
+                this.displayMessage(msg.text, msg.type);
+            });
+            this.scrollToBottom();
+        }
+        
+        displayMessage(text, type) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `ai-message ${type}`;
+            msgDiv.textContent = text;
+            this.chatMessages.appendChild(msgDiv);
+            this.scrollToBottom();
+        }
+        
+        scrollToBottom() {
+            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+        }
+        
+        async sendMessage() {
+            const message = this.userInput.value.trim();
+            
+            if (!message || this.isWaitingForResponse) {
+                return;
+            }
+            
+            // Display user message
+            this.displayMessage(message, 'user');
+            this.chatHistory.push({ text: message, type: 'user' });
+            
+            // Clear input
+            this.userInput.value = '';
+            this.sendBtn.disabled = true;
+            this.isWaitingForResponse = true;
+            
+            try {
+                // Collect current form data
+                const formData = this.collectFormData();
+                
+                // Send to server
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        formData: formData
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    // Display assistant message
+                    this.displayMessage(result.message, 'assistant');
+                    this.chatHistory.push({ text: result.message, type: 'assistant' });
+                    
+                    // Handle pending changes
+                    if (result.updates && Object.keys(result.updates).length > 0) {
+                        this.showPendingChanges(result.updates);
+                    }
+                } else {
+                    const errorMsg = result.message || 'Failed to get response';
+                    this.displayMessage(errorMsg, 'error');
+                    this.chatHistory.push({ text: errorMsg, type: 'error' });
+                }
+            } catch (error) {
+                const errorMsg = `Error: ${error.message}`;
+                this.displayMessage(errorMsg, 'error');
+                this.chatHistory.push({ text: errorMsg, type: 'error' });
+                console.error('Chat error:', error);
+            } finally {
+                this.sendBtn.disabled = false;
+                this.isWaitingForResponse = false;
+                this.saveChatHistory();
+                this.userInput.focus();
+            }
+        }
+        
+        collectFormData() {
+            const formData = {};
+            const form = document.querySelector('form');
+            
+            if (form) {
+                const formInputs = form.querySelectorAll('[name]');
+                formInputs.forEach(input => {
+                    const key = input.name || input.getAttribute('data-key');
+                    if (key) {
+                        formData[key] = input.value || '';
+                    }
+                });
+            }
+            
+            return formData;
+        }
+        
+        showPendingChanges(updates) {
+            this.pendingUpdates = updates;
+            this.changesList.innerHTML = '';
+            
+            Object.entries(updates).forEach(([key, value]) => {
+                const li = document.createElement('li');
+                li.textContent = `${key}: ${value}`;
+                this.changesList.appendChild(li);
+            });
+            
+            this.pendingChanges.classList.remove('d-none');
+        }
+        
+        applyPendingChanges() {
+            Object.entries(this.pendingUpdates).forEach(([key, value]) => {
+                const input = document.querySelector(`[name="${key}"], [data-key="${key}"]`);
+                if (input) {
+                    input.value = value;
+                    // Trigger change event
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+            
+            this.displayMessage('✓ Form updated with suggested changes.', 'assistant');
+            this.pendingChanges.classList.add('d-none');
+            this.pendingUpdates = {};
+            this.chatHistory.push({ 
+                text: '✓ Form updated with suggested changes.', 
+                type: 'assistant' 
+            });
+            this.saveChatHistory();
+        }
+        
+        rejectPendingChanges() {
+            this.displayMessage('Changes rejected. Form unchanged.', 'assistant');
+            this.pendingChanges.classList.add('d-none');
+            this.pendingUpdates = {};
+            this.chatHistory.push({ 
+                text: 'Changes rejected. Form unchanged.', 
+                type: 'assistant' 
+            });
+            this.saveChatHistory();
+        }
+        
+        clearHistory() {
+            this.chatHistory = [];
+            this.saveChatHistory();
+            this.displayChatHistory();
+        }
+    }
+    
+    // Initialize when document is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        window.formAssistant = new FormAIAssistant();
+    });
+</script>

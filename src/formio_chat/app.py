@@ -1,8 +1,13 @@
 """Flask application for Form.io integration"""
 
 import json
+import os
 from flask import Flask, render_template, request, jsonify
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__, template_folder=Path(__file__).parent / "templates")
 
@@ -10,6 +15,19 @@ app = Flask(__name__, template_folder=Path(__file__).parent / "templates")
 app_dir = Path(__file__).parent
 DEFAULT_SCHEMA_FILE = app_dir / "default.json"
 FORM_SCHEMA_FILE = app_dir / "form_schema.json"
+
+# Import Gemini service
+try:
+    from .gemini_service import get_gemini_assistant
+    GEMINI_AVAILABLE = True
+except ImportError as e:
+    GEMINI_AVAILABLE = False
+    print(f"Warning: Gemini service import failed: {e}")
+    print("Chat feature will be disabled.")
+except Exception as e:
+    GEMINI_AVAILABLE = False
+    print(f"Warning: Gemini service initialization failed: {e}")
+    print("Chat feature will be disabled. Check your .env file and API key.")
 
 
 def load_default_schema():
@@ -101,6 +119,51 @@ def submit_form():
     # Here you would typically save the submission to a database
     print(f"Form submission: {data}")
     return jsonify({"status": "success", "message": "Form submitted successfully"})
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat_with_form():
+    """API endpoint for AI chat assistance with form filling"""
+    if not GEMINI_AVAILABLE:
+        return jsonify({
+            "status": "error",
+            "message": "Chat feature is not available. Gemini API is not configured."
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"status": "error", "message": "No data provided"}), 400
+        
+        user_message = data.get("message", "").strip()
+        form_data = data.get("formData", {})
+        
+        if not user_message:
+            return jsonify({"status": "error", "message": "No message provided"}), 400
+        
+        # Get the Gemini assistant
+        assistant = get_gemini_assistant()
+        
+        # Process the user request
+        result = assistant.process_user_request(form_schema, form_data, user_message)
+        
+        if result.get("error"):
+            print(f"Gemini error: {result['error']}")
+        
+        return jsonify({
+            "status": "success",
+            "message": result.get("message", ""),
+            "updates": result.get("updates", {}),
+            "error": result.get("error")
+        })
+    
+    except Exception as e:
+        print(f"Error in chat_with_form: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error processing chat request: {str(e)}"
+        }), 500
 
 
 def main():
